@@ -11,6 +11,14 @@ if(isset($_GET['account'])) {
     $memcache_key = 'spotify_carsso_account_'.$_GET['account'];
     $memcache_data = $memcache_obj->get($memcache_key);
     $from_cache = 1;
+    $size = mt_rand(100,800);
+    $default = array(
+        'cover' => 'https://placekitten.com/'.$size.'/'.$size,
+        'track' => 'Nothing is playing',
+        'artist' => '(or private session)',
+        'album' => '',
+        'link' => '',
+    );
     if(!$memcache_data)
     {
         $token = null;
@@ -36,8 +44,20 @@ if(isset($_GET['account'])) {
         $api->setAccessToken($accessToken);
         $me = null;
         //$me = json_decode(json_encode($api->me()), true);
-        $playback = json_decode(json_encode($api->getMyCurrentPlaybackInfo()), true);
-        $memcache_obj->set($memcache_key, array('me' => $me, 'playback' => $playback), 0, 9);
+        $playback = null;
+        try {
+            $playback = json_decode(json_encode($api->getMyCurrentPlaybackInfo()), true);
+        } catch (SpotifyWebAPI\SpotifyWebAPIException $e) {
+            if($e->getMessage() == 'Backend respond with 500') {
+                $default['cover'] = 'https://i.pinimg.com/236x/53/64/47/536447f45d027600878374901c7d7768--tiger-drawing-pen-drawings.jpg';
+                $default['track'] = 'Cannot retreive current track';
+                $default['artist'] = 'Spotify API is broken: 500 error';
+                $default['album'] = 'If current track is a podcast, this is "normal"';
+            } else {
+                throw $e;
+            }
+        }
+        $memcache_obj->set($memcache_key, array('me' => $me, 'playback' => $playback, 'default' => $default), 0, 9);
         $from_cache = 0;
         $memcache_data = $memcache_obj->get($memcache_key);
         if(!$memcache_data)
@@ -48,8 +68,7 @@ if(isset($_GET['account'])) {
     }
     $me = $memcache_data['me'];
     $playback = $memcache_data['playback']; 
-    
-
+    $default = $memcache_data['default']; 
     
     $artists = array();
     if(isset($playback['item']['artists']))
@@ -66,12 +85,11 @@ if(isset($_GET['account'])) {
         $track = $playback['item']['name'];
         $link = $playback['item']['external_urls']['spotify'];
     } else {
-        $size = mt_rand(100,800);
-        $cover = 'https://placekitten.com/'.$size.'/'.$size;
-        $artist = '(or private session)';
-        $album = '';
-        $track = 'Nothing is playing';
-        $link = '';
+        $cover = $default['cover'];
+        $track = $default['track'];
+        $artist = $default['artist'];
+        $album = $default['album'];
+        $link = $default['link'];
     }
 ?>
 <html>
