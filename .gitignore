@@ -1,0 +1,17 @@
+nbproject
+.buildpath
+.settings
+.project
+.idea
+*~
+.DS_Store
+*.DS_Store
+*/.DS_Store
+.directory
+/config.php
+/.htaccess
+/.htpasswd
+/database.sqlite
+composer.phar
+composer.lock
+vendor
