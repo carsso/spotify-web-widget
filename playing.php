@@ -18,6 +18,8 @@ if(isset($_GET['account'])) {
         'artist' => '(or private session)',
         'album' => '',
         'link' => '',
+        'progress' => 0,
+        'duration' => 0,
     );
     if(!$memcache_data)
     {
@@ -57,7 +59,7 @@ if(isset($_GET['account'])) {
                 throw $e;
             }
         }
-        $memcache_obj->set($memcache_key, array('me' => $me, 'playback' => $playback, 'default' => $default), 0, 9);
+        $memcache_obj->set($memcache_key, array('me' => $me, 'playback' => $playback, 'default' => $default, 'at' => time()), 0, 9);
         $from_cache = 0;
         $memcache_data = $memcache_obj->get($memcache_key);
         if(!$memcache_data)
@@ -69,6 +71,7 @@ if(isset($_GET['account'])) {
     $me = $memcache_data['me'];
     $playback = $memcache_data['playback']; 
     $default = $memcache_data['default']; 
+    $at = $memcache_data['at']; 
     
     $artists = array();
     if(isset($playback['item']['artists']))
@@ -84,16 +87,44 @@ if(isset($_GET['account'])) {
         $album = $playback['item']['album']['name'];
         $track = $playback['item']['name'];
         $link = $playback['item']['external_urls']['spotify'];
+        $progress = $playback['progress_ms']/1000+(time()-$at);
+        $duration = $playback['item']['duration_ms']/1000;
+        if($progress > $duration) {
+            $progress = $duration;
+        }
     } else {
         $cover = $default['cover'];
         $track = $default['track'];
         $artist = $default['artist'];
         $album = $default['album'];
         $link = $default['link'];
+        $progress = $default['progress'];
+        $duration = $default['duration'];
     }
+    $progress_percent = 0;
+    if($progress) {
+        $progress_percent = ($progress/$duration)*100;
+    }
+    $duration_human = floor($duration/60).':'.sprintf("%'.02d", round($duration-floor($duration/60)*60));
+    $progress_human = floor($progress/60).':'.sprintf("%'.02d", round($progress-floor($progress/60)*60));
 ?>
 <html>
 <head>
+<script type="text/javascript">
+    var progress = <?php echo $progress ?>;
+    var duration = <?php echo $duration ?>;
+    setInterval(function(){
+        progress = progress+0.1;
+        if(progress > duration) {
+            progress = duration;
+        }
+        var progress_percent = 0;
+        progress_percent = (progress/duration)*100;
+        var progress_human = Math.floor(progress/60)+':'+(Math.round(progress-Math.floor(progress/60)*60)+'').padStart(2, '0');
+        document.getElementById('player-current-progress').style.width = progress_percent+'%';
+        document.getElementById('player-progress-text').innerHTML = progress_human;
+    }, 100);
+</script>
 <style>
     @font-face {
         font-family: 'spotify-circular';
@@ -128,19 +159,22 @@ if(isset($_GET['account'])) {
     .track-name {
         color: #fff;
         font-size: 14px;
+        height: 18px;
         display: block;
         text-decoration: none;
     }
     .track-artist {
         color: rgba(255, 255, 255, 0.6);
         font-size: 14px;
+        height: 18px;
         display: block;
         text-decoration: none;
     }
     .track-album {
-        color: rgba(255, 255, 255, 0.6);
-        margin-top: 5px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-top: 2px;
         font-size: 12px;
+        height: 15px;
         display: block;
         text-decoration: none;
     }
@@ -153,6 +187,7 @@ if(isset($_GET['account'])) {
     }
     .player-center {
         height: 80px;
+        width: calc(100% - 160px);
     }
     .player-right {
         width: 80px;
@@ -161,11 +196,37 @@ if(isset($_GET['account'])) {
         right: 0;
     }
     .player-content {
-        margin: 10px;
+        margin: 6px 10px;
     }
     .player-logo {
         margin: 20px 20px 0 20px;
         height: 40px;
+        width: 40px;
+    }
+    .player-progress {
+        color: rgba(255, 255, 255, 0.4);
+        margin-top: 5px;
+        font-size: 8px;
+        display: flex;
+        text-align: center;
+    }
+    .player-progressbar {
+        margin-top: 3px;
+        width: calc(100% - 80px);
+        background-color: rgba(255, 255, 255, 0.3);
+        height: 4px;
+        border-radius: 2px;
+    }
+    .player-progressbar-inner {
+        background-color: rgb(46, 189, 89);
+        height: 4px;
+        border-radius: 2px;
+        width: 0%;
+    }
+    #player-progress-text {
+        width: 40px;
+    }
+    #player-duration-text {
         width: 40px;
     }
     .almost-invisible {
@@ -187,6 +248,13 @@ if(isset($_GET['account'])) {
                 <a href="<?php echo $link ?>" target="_blank" class="track-name"><?php echo $track ?></a>
                 <a href="<?php echo $link ?>" target="_blank" class="track-artist"><?php echo $artist ?></a>
                 <a href="<?php echo $link ?>" target="_blank" class="track-album"><?php echo $album ?></a>
+                <div class="player-progress">
+                    <div id="player-progress-text"><?php echo $progress_human ?></div>
+                    <div class="player-progressbar">
+                        <div class="player-progressbar-inner" id="player-current-progress" style="width: <?php echo $progress_percent ?>%"></div>
+                    </div>
+                    <div id="player-duration-text"><?php echo $duration_human ?></div>
+                </div>
             </div>
         </div>
         <div class="player-right">
