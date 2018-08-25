@@ -1,8 +1,5 @@
 <?php
-require 'vendor/autoload.php';
 
-$session = new SpotifyWebAPI\Session(
-    '2650b8ethisismyappkey8392',
-    '2086thisismyappsecret2930',
-    'https://website.test/link.php'
-);
+$spotify_api_key = '2650b8ethisismyappkey8392';
+$spotify_api_secret = '2086thisismyappsecret2930';
+$spotify_api_callback = 'https://website.test/link.php';

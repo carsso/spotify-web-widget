@@ -1,129 +1,169 @@
 <?php
-require 'config.php';
+require 'functions.php';
 
-$api = new SpotifyWebAPI\SpotifyWebAPI();
-if(!class_exists('SQLite3'))
-      die("SQLite 3 NOT supported.");
+if(!isset($_GET['account'])) {
+    die('Missing account');
+}
 
-if(isset($_GET['account'])) {
-    $memcache_obj = new Memcache;
-    $memcache_obj->connect('127.0.0.1', 11211);
-    $memcache_key = 'spotify_carsso_account_'.$_GET['account'];
-    $memcache_data = $memcache_obj->get($memcache_key);
-    $from_cache = 1;
-    $size = mt_rand(100,800);
-    $default = array(
-        'cover' => 'https://placekitten.com/'.$size.'/'.$size,
-        'track' => 'Nothing is playing',
-        'artist' => '(or private session)',
-        'album' => '',
-        'link' => '',
-        'progress' => 0,
-        'duration' => 0,
-    );
-    if(!$memcache_data)
-    {
-        $token = null;
-        $db = new SQLite3('database.sqlite');
-        if (!$db) {
-            die($db->lastErrorMsg());
-        }
-        $ret = $db->query('SELECT * FROM spotify');
-        if(!$ret){
-            die($db->lastErrorMsg());
-        }
-        while ($row = $ret->fetchArray()) {
-            if($row['username'] == $_GET['account']) {
-                $token = $row['token'];
-                break;
-            }
-        }
-        if(!$token) {
-            die('Invalid account, please <a href="link.php">link it</a> first');
-        }
+$account = $_GET['account'];
+$memcache_data = getMemcacheData($account);
+$from_cache = 1;
+$size = mt_rand(100,800);
+$default = array(
+    'cover' => 'https://placekitten.com/'.$size.'/'.$size,
+    'track' => 'Nothing is playing',
+    'artist' => '',
+    'album' => '',
+    'link' => '',
+    'progress' => 0,
+    'duration' => 0,
+);
+if(!$memcache_data)
+{
+    $token = getToken($account);
+    if(!$token) {
+        die('Invalid account, please <a href="link.php">link it</a> first');
+    }
+    $playback = null;
+    $last_played = null;
+    try {
         $session->refreshAccessToken($token);
         $accessToken = $session->getAccessToken();
         $api->setAccessToken($accessToken);
-        $me = null;
-        //$me = json_decode(json_encode($api->me()), true);
-        $playback = null;
-        try {
-            $playback = json_decode(json_encode($api->getMyCurrentPlaybackInfo()), true);
-        } catch (SpotifyWebAPI\SpotifyWebAPIException $e) {
-            if($e->getMessage() == 'Backend respond with 500') {
-                $default['cover'] = 'https://i.pinimg.com/236x/53/64/47/536447f45d027600878374901c7d7768--tiger-drawing-pen-drawings.jpg';
-                $default['track'] = 'Cannot retreive current track';
-                $default['artist'] = 'Spotify API is broken: 500 error';
-                $default['album'] = 'If current track is a podcast, this is "normal"';
-            } else {
-                throw $e;
+        $playback = json_decode(json_encode($api->getMyCurrentPlaybackInfo()), true);
+        if(!$playback['item']) {
+            $recently_played = json_decode(json_encode($api->getMyRecentTracks(array('limit' => 1))), true);
+            if($recently_played
+                and $recently_played['items']
+                and count($recently_played['items'])
+                and $recently_played['items'][0]
+                and $recently_played['items'][0]['track']
+                and $recently_played['items'][0]['track']['id']) {
+                $last_played = json_decode(json_encode($api->getTrack($recently_played['items'][0]['track']['id'])), true);
             }
         }
-        $memcache_obj->set($memcache_key, array('me' => $me, 'playback' => $playback, 'default' => $default, 'at' => time()), 0, 9);
-        $from_cache = 0;
-        $memcache_data = $memcache_obj->get($memcache_key);
-        if(!$memcache_data)
-        {
-            echo 'Error while getting data from memcache';
-            die();
+    } catch (SpotifyWebAPI\SpotifyWebAPIException $e) {
+        $default['cover'] = 'https://i.pinimg.com/236x/53/64/47/536447f45d027600878374901c7d7768--tiger-drawing-pen-drawings.jpg';
+        if($e->getMessage() == 'Backend respond with 500') {
+            $default['track'] = 'Cannot retreive current track';
+            $default['artist'] = 'Spotify API is broken: 500 error';
+            $default['album'] = 'If current track is a podcast, this is "normal"';
+        } elseif($e->getMessage() == 'Insufficient client scope' or $e->getMessage() == 'Permissions missing' or $e->getMessage() == 'Refresh token revoked') {
+            $default['track'] = 'Missing authorization on your account';
+            $default['artist'] = 'Please link your spotify account again';
+            $default['album'] = 'Click here to re-link your account';
+            $default['link'] = 'javascript:openLink(\'action.php?action=relink&account='.$account.'\')';
+        } else {
+            $default['track'] = 'Spotify API ERROR';
+            $default['artist'] = $e->getMessage();
+            $default['album'] = $e->getTraceAsString();
         }
     }
-    $me = $memcache_data['me'];
-    $playback = $memcache_data['playback']; 
-    $default = $memcache_data['default']; 
-    $at = $memcache_data['at']; 
-    
+    $memcache_data = pushMemcacheData($account, array('playback' => $playback, 'last_played' => $last_played, 'default' => $default, 'at' => time()));
+    $from_cache = 0;
+}
+$playback = $memcache_data['playback']; 
+$last_played = $memcache_data['last_played']; 
+$default = $memcache_data['default']; 
+$at = $memcache_data['at']; 
+
+$cover = $default['cover'];
+$trackname = $default['track'];
+$artist = $default['artist'];
+$album = $default['album'];
+$link = $default['link'];
+$progress = $default['progress'];
+$duration = $default['duration'];
+
+$is_playing = false;
+if($playback['is_playing']) {
+    $is_playing = true;
+}
+$is_private_session = false;
+if($playback['device']['is_private_session']) {
+    $is_private_session = true;
+}
+
+$track = $playback['item'];
+if(!$track) {
+    $track = $last_played;
+}
+if($track) {
     $artists = array();
-    if(isset($playback['item']['artists']))
+    if(isset($track['artists']))
     {
-        foreach($playback['item']['artists'] as $artist)
+        foreach($track['artists'] as $artist)
         {
             $artists[] = $artist['name'];
         }
     }
-    if($playback['is_playing'] and !$playback['device']['is_private_session']) {
-        $cover = $playback['item']['album']['images'][1]['url'];
-        $artist = join(', ', $artists);
-        $album = $playback['item']['album']['name'];
-        $track = $playback['item']['name'];
-        $link = $playback['item']['external_urls']['spotify'];
-        $progress = $playback['progress_ms']/1000+(time()-$at);
-        $duration = $playback['item']['duration_ms']/1000;
-        if($progress > $duration) {
-            $progress = $duration;
+    $artist = join(', ', $artists);
+    $cover = $track['album']['images'][1]['url'];
+    $album = $track['album']['name'];
+    $trackname = $track['name'];
+    $link = $track['external_urls']['spotify'];
+    $duration = $track['duration_ms']/1000;
+    if($playback && $playback['progress_ms'])
+    {
+        $progress = $playback['progress_ms']/1000;
+        if($is_playing) {
+            $progress += (time()-$at);
         }
-    } else {
+    }
+    if($is_private_session)
+    {
         $cover = $default['cover'];
-        $track = $default['track'];
-        $artist = $default['artist'];
-        $album = $default['album'];
+        $trackname = '*private session*';
+        $artist = '*private*';
+        $album = '*private*';
         $link = $default['link'];
-        $progress = $default['progress'];
-        $duration = $default['duration'];
     }
-    $progress_percent = 0;
-    if($progress) {
-        $progress_percent = ($progress/$duration)*100;
+}
+$progress_percent = 0;
+if($progress) {
+    $progress_percent = ($progress/$duration)*100;
+    if($progress_percent > 100) {
+        $progress_percent = 100;
     }
-    $duration_human = floor($duration/60).':'.sprintf("%'.02d", round($duration-floor($duration/60)*60));
-    $progress_human = floor($progress/60).':'.sprintf("%'.02d", round($progress-floor($progress/60)*60));
+}
+$duration_human = floor($duration/60).':'.sprintf("%'.02d", round($duration-floor($duration/60)*60));
+$progress_human = floor($progress/60).':'.sprintf("%'.02d", round($progress-floor($progress/60)*60));
 ?>
 <html>
 <head>
+<meta http-equiv="refresh" content="15">
+<title>Spotify Now Playing</title>
 <script type="text/javascript">
     var progress = <?php echo $progress ?>;
     var duration = <?php echo $duration ?>;
-    setInterval(function(){
-        progress = progress+0.1;
-        if(progress > duration) {
-            progress = duration;
+    var is_playing = <?php echo ($is_playing)?'true':'false' ?>;
+    if(duration && is_playing) {
+        setInterval(function(){
+            progress = progress+0.1;
+            if(progress > duration) {
+                progress = duration;
+            }
+            var progress_percent = 0;
+            progress_percent = (progress/duration)*100;
+            var progress_human = Math.floor(progress/60)+':'+(Math.round(progress-Math.floor(progress/60)*60)+'').padStart(2, '0');
+            document.getElementById('player-current-progress').style.width = progress_percent+'%';
+            document.getElementById('player-progress-text').innerHTML = progress_human;
+        }, 100);
+    }
+    function openLink(url) {
+        var width = 400;
+        var height = 600;
+        var left = screen.width / 2 - width / 2;
+        var top = screen.height / 2 - height / 2;
+        var popup = window.open(
+            url,
+            'Spotify',
+            'menubar=no,location=no,resizable=no,scrollbars=no,status=no,width='+width+',height='+height+',top='+top+',left='+left
+        );
+        popup.onunload = function(){
+            window.location.reload();
         }
-        var progress_percent = 0;
-        progress_percent = (progress/duration)*100;
-        var progress_human = Math.floor(progress/60)+':'+(Math.round(progress-Math.floor(progress/60)*60)+'').padStart(2, '0');
-        document.getElementById('player-current-progress').style.width = progress_percent+'%';
-        document.getElementById('player-progress-text').innerHTML = progress_human;
-    }, 100);
+    }
 </script>
 <style>
     @font-face {
@@ -218,16 +258,47 @@ if(isset($_GET['account'])) {
         border-radius: 2px;
     }
     .player-progressbar-inner {
-        background-color: rgb(46, 189, 89);
         height: 4px;
         border-radius: 2px;
         width: 0%;
+    }
+    .player-playing .player-progressbar-inner {
+        background-color: rgb(46, 189, 89);
+    }
+    .player-paused .player-progressbar-inner {
+        background-color: rgb(255, 255, 255);
     }
     #player-progress-text {
         width: 40px;
     }
     #player-duration-text {
         width: 40px;
+    }
+    .player-controls {
+        margin: 19px; 
+        display: flex;
+    }
+    .player-control {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.5);
+        border-width: 1px;
+        border-style: solid;
+        border-color: white;
+        cursor: pointer;
+    }
+    .player-control:hover {
+        transform: scale(1.1);
+    }
+    .player-control-inner {
+        margin: 8px;
+    }
+    .player-playing .player-control-pause {
+        display: none;
+    }
+    .player-paused .player-control-play {
+        display: none;
     }
     .almost-invisible {
         color: #4a4a4a;
@@ -241,11 +312,24 @@ if(isset($_GET['account'])) {
 </head>
 <body>
 <div id="main">
-    <div class="player">
-        <div class="player-left" style="background-image:url(<?php echo $cover ?>)"></div>
+    <div class="player <?php echo ($is_playing)?'player-playing':'player-paused'; ?>">
+        <div class="player-left" style="background-image:url(<?php echo $cover ?>)">
+            <div class="player-controls">
+                <div class="player-control player-control-pause" onclick="openLink('action.php?action=play&account=<?php echo $account ?>')">
+                    <div class="player-control-inner">
+                        <svg viewBox="0 0 26 26" xmlns="http://www.w3.org/2000/svg"><path d="M7.712 22.04a.732.732 0 0 1-.806.007.767.767 0 0 1-.406-.703V4.656c0-.31.135-.544.406-.703.271-.16.54-.157.806.006l14.458 8.332c.266.163.4.4.4.709 0 .31-.134.546-.4.71L7.712 22.04z" fill="currentColor" fill-rule="evenodd"></path></svg>
+                    </div>
+                </div>
+                <div class="player-control player-control-play" onclick="openLink('action.php?action=pause&account=<?php echo $account ?>')">
+                    <div class="player-control-inner">
+                        <svg viewBox="0 0 26 26" xmlns="http://www.w3.org/2000/svg"><g fill="currentColor" fill-rule="evenodd"><rect x="5" y="3" width="5" height="20" rx="1"></rect><rect x="16" y="3" width="5" height="20" rx="1"></rect></g></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="player-center">
             <div class="player-content">
-                <a href="<?php echo $link ?>" target="_blank" class="track-name"><?php echo $track ?></a>
+                <a href="<?php echo $link ?>" target="_blank" class="track-name"><?php echo $trackname ?></a>
                 <a href="<?php echo $link ?>" target="_blank" class="track-artist"><?php echo $artist ?></a>
                 <a href="<?php echo $link ?>" target="_blank" class="track-album"><?php echo $album ?></a>
                 <div class="player-progress">
@@ -269,8 +353,3 @@ if(isset($_GET['account'])) {
 </div>
 </body>
 </html>
-<?php
-} else {
-    echo 'Missing account param';
-    die();
-}
