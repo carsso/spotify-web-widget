@@ -202,6 +202,9 @@ $progress_human = floor($progress/60).':'.sprintf("%'.02d", round($progress-floo
         height: 18px;
         display: block;
         text-decoration: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .track-artist {
         color: rgba(255, 255, 255, 0.6);
@@ -209,6 +212,9 @@ $progress_human = floor($progress/60).':'.sprintf("%'.02d", round($progress-floo
         height: 18px;
         display: block;
         text-decoration: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .track-album {
         color: rgba(255, 255, 255, 0.4);
@@ -217,6 +223,9 @@ $progress_human = floor($progress/60).':'.sprintf("%'.02d", round($progress-floo
         height: 15px;
         display: block;
         text-decoration: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .player-left {
         width: 80px;
