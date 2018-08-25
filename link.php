@@ -23,8 +23,8 @@ if(isset($_GET['code']) or isset($_GET['token'])) {
         header('Location: '.$redirect);
         die;
     }
-    echo 'Account '.$me['id'].' ('.$me['display_name'].' - '.$me['email'].') has been successfully linked : <a href="playing.php?account='.$me['id'].'">See your widget</a><br />';
-    die();
+    header('Location: playing.php?account='.$me['id']);
+    die;
 } else {
     $options = [
         'scope' => [
