@@ -19,7 +19,7 @@ while ($row = $ret->fetchArray()) {
         $playback = json_decode(json_encode($api->getMyCurrentPlaybackInfo()), true);
         echo 'Account '.$username.' ('.$me['display_name'].' - '.$me['email'].') is linked and working : <a href="playing.php?account='.$me['id'].'">See widget</a><br />';
     } catch(Exception $e) {
-        echo 'Account '.$username.' ('.$name.' - '.$email.') token is invalid : '.$e->getMessage().'<br />';
+        echo 'Account '.$username.' ('.$name.' - '.$email.') API ERROR  : '.$e->getMessage().' <a href="playing.php?account='.$username.'">See widget</a><br />';
     }
 }
 die();
