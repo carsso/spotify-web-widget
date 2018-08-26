@@ -44,7 +44,6 @@ if(!$memcache_data)
             }
         }
     } catch (SpotifyWebAPI\SpotifyWebAPIException $e) {
-            var_export($e);
         $default['cover'] = 'https://i.pinimg.com/236x/53/64/47/536447f45d027600878374901c7d7768--tiger-drawing-pen-drawings.jpg';
         if($e->getMessage() == 'Backend respond with 500') {
             $default['track'] = 'Cannot retreive current track';
