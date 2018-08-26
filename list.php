@@ -17,7 +17,7 @@ while ($row = $ret->fetchArray()) {
         $api->setAccessToken($accessToken);
         $me = json_decode(json_encode($api->me()), true);
         $playback = json_decode(json_encode($api->getMyCurrentPlaybackInfo()), true);
-        echo 'Account '.$username.' ('.$me['display_name'].' - '.$me['email'].') is linked and working : <a href="playing.php?account='.$me['id'].'">See widget</a><br />';
+        echo 'Account '.$username.' ('.$me['display_name'].' - '.$me['email'].') is linked and working : <a href="playing.php?account='.$me['id'].'">See widget</a> - Scopes : '.implode(', ', $session->getScope()).'<br />';
     } catch(Exception $e) {
         echo 'Account '.$username.' ('.$name.' - '.$email.') API ERROR  : '.$e->getMessage().' <a href="playing.php?account='.$username.'">See widget</a><br />';
     }
