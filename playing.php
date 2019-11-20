@@ -33,14 +33,25 @@ if(!$memcache_data)
         $api->setAccessToken($accessToken);
         $playback = json_decode(json_encode($api->getMyCurrentPlaybackInfo()), true);
         if(!$playback['item']) {
-            $recently_played = json_decode(json_encode($api->getMyRecentTracks(array('limit' => 1))), true);
-            if($recently_played
-                and $recently_played['items']
-                and count($recently_played['items'])
-                and $recently_played['items'][0]
-                and $recently_played['items'][0]['track']
-                and $recently_played['items'][0]['track']['id']) {
-                $last_played = json_decode(json_encode($api->getTrack($recently_played['items'][0]['track']['id'])), true);
+            if($playback['is_playing']) {
+                if($playback['currently_playing_type'] == 'episode') {
+                    $default['track'] = 'Playing a podcast';
+                    $default['artist'] = 'Podcast';
+                } else {
+                    $default['track'] = 'Playing an unknown track';
+                    $default['artist'] = 'Track';
+                }
+                $default['album'] = 'Unknown';
+            } else {
+                $recently_played = json_decode(json_encode($api->getMyRecentTracks(array('limit' => 1))), true);
+                if($recently_played
+                    and $recently_played['items']
+                    and count($recently_played['items'])
+                    and $recently_played['items'][0]
+                    and $recently_played['items'][0]['track']
+                    and $recently_played['items'][0]['track']['id']) {
+                    $last_played = json_decode(json_encode($api->getTrack($recently_played['items'][0]['track']['id'])), true);
+                }
             }
         }
     } catch (SpotifyWebAPI\SpotifyWebAPIException $e) {
